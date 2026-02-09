@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Kahoona Project</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      line-height: 1.6;
+    }
+    header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 3.5rem 1rem 2.5rem;
+      text-align: center;
+    }
+    h1 {
+      margin: 0;
+      font-size: 3rem;
+      color: #58a6ff;
+    }
+    .tagline {
+      font-size: 1.25rem;
+      color: #8b949e;
+      margin-top: 0.5rem;
+    }
+    main {
+      max-width: 900px;
+      margin: 3rem auto;
+      padding: 0 1.5rem;
+    }
+    #loading {
+      text-align: center;
+      color: #8b949e;
+      font-style: italic;
+    }
+    #projects {
+      list-style: none;
+      padding: 0;
+    }
+    #projects li {
+      margin: 1rem 0;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    #projects a {
+      display: block;
+      padding: 1.5rem 1.8rem;
+      color: #58a6ff;
+      text-decoration: none;
+      font-size: 1.35rem;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #projects a:hover {
+      background: #1f6feb22;
+    }
+    .desc {
+      color: #8b949e;
+      font-size: 1rem;
+      margin-top: 0.4rem;
+    }
+    .error {
+      color: #f85149;
+      text-align: center;
+      padding: 2rem;
+    }
+    footer {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #8b949e;
+      font-size: 0.95rem;
+      border-top: 1px solid #30363d;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>The Kahoona Project</h1>
+    <div class="tagline">Creative experiments in geometry, code, visualisation & spirituality</div>
+  </header>
+
+  <main>
+    <p id="loading">Loading projects...</p>
+
+    <ul id="projects"></ul>
+
+    <div id="error" class="error" style="display:none;"></div>
+  </main>
+
+  <footer>
+    © 2026 The Kahoona Project • 
+    <a href="https://github.com/thekahoonaproject/thekahoonaproject" style="color:#58a6ff;">View on GitHub</a>
+  </footer>
+
+  <script>
+    const repo = 'thekahoonaproject/thekahoonaproject';
+    const apiUrl = `https://api.github.com/repos/${repo}/contents`;
+    const skip = ['index.html', 'README.md', '.gitignore', '.nojekyll', 'CNAME', 'assets', 'css', 'js', 'img', '.github'];
+
+    fetch(apiUrl)
+      .then(r => {
+        if (!r.ok) throw new Error(`GitHub API error: ${r.status}`);
+        return r.json();
+      })
+      .then(items => {
+        document.getElementById('loading').style.display = 'none';
+
+        const list = document.getElementById('projects');
+        let hasItems = false;
+
+        items.forEach(item => {
+          if (item.type === 'dir' && !skip.includes(item.name)) {
+            hasItems = true;
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = item.name + '/';
+            a.textContent = item.name;
+
+            const desc = document.createElement('div');
+            desc.className = 'desc';
+            desc.textContent = 'Project folder – click to view';  // you can improve later with manual map if wanted
+
+            li.appendChild(a);
+            li.appendChild(desc);
+            list.appendChild(li);
+          }
+        });
+
+        if (!hasItems) {
+          document.getElementById('projects').innerHTML = '<li class="error">No project folders found yet. Add some!</li>';
+        }
+      })
+      .catch(err => {
+        document.getElementById('loading').style.display = 'none';
+        const errDiv = document.getElementById('error');
+        errDiv.textContent = 'Could not load projects automatically. ' + err.message + 
+                             ' (Check repo is public & try refreshing.)';
+        errDiv.style.display = 'block';
+      });
+  </script>
+
+</body>
+</html>
