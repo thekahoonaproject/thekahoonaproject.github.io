@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Metatron's Cube 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<script src="https://unpkg.com/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://unpkg.com/three@0.134.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { margin: 0; overflow: hidden; background: #0a0a0f; font-family: system-ui, sans-serif; }
+  #viewer { position: absolute; inset: 0; }
+  #sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 320px;
+             background: rgba(15,15,30,0.92); backdrop-filter: blur(8px);
+             border-right: 1px solid #333; overflow-y: auto; z-index: 10; padding: 20px; }
+  .label { pointer-events: none; font-weight: bold; text-shadow: 0 0 8px black, 0 0 12px black; white-space: nowrap; }
+  .sephira-label { font-size: 1.1em; color: #f0f0ff; }
+  .planet-label { font-size: 0.9em; color: #ffd700; opacity: 0.9; margin-top: 2px; }
+  .boundary-label { font-size: 1.05em; color: #dddddd; opacity: 0.7; font-style: italic; }
+  .path-label {
+    font-size: 0.92em; color: #ffddaa; opacity: 0.92; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 3px 8px; border-radius: 6px;
+    white-space: nowrap; transform-origin: center center;
+  }
+  .zodiac-label { font-size: 1.4em; color: #ffcc99; opacity: 0.85; text-shadow: 0 0 10px #ffcc99; }
+  button.on { background-color: #6366f1 !important; color: white; }
+  button.off { background-color: #4b5563 !important; color: white; }
+  canvas { display: block; }
+</style>
+</head>
+<body class="text-gray-200">
+<div id="sidebar">
+  <h1 class="text-2xl font-bold mb-2">Spirituality Visualised</h1>
+  <p class="text-gray-400 mb-4">kabbalah + Krystal & Fibonacci & Helix + Tarot + Planets + Zodiac Wheel</p>
+
+  <div class="grid grid-cols-2 gap-3 mb-4">
+    <button id="toggle-labels" class="py-2.5 px-4 rounded font-medium bg-indigo-700/80 hover:bg-indigo-600 transition on">Sephira Labels: ON</button>
+    <button id="toggle-english" class="py-2.5 px-4 rounded font-medium bg-violet-700/80 hover:bg-violet-600 transition on">English Names: ON</button>
+  </div>
+
+  <div class="grid grid-cols-2 gap-3 mb-4">
+    <button id="toggle-realms" class="py-2.5 px-4 rounded font-medium bg-indigo-700/80 hover:bg-indigo-600 transition on">Realms: ON</button>
+    <button id="toggle-planets" class="py-2.5 px-4 rounded font-medium bg-yellow-700/80 hover:bg-yellow-600 transition on">Planets: ON</button>
+  </div>
+
+  <div class="grid grid-cols-2 gap-3 mb-4">
+    <button id="toggle-krystal" class="py-2.5 px-4 rounded font-medium bg-cyan-700/80 hover:bg-cyan-600 transition on">Krystal (Masc): ON</button>
+    <button id="toggle-fibonacci" class="py-2.5 px-4 rounded font-medium bg-amber-700/80 hover:bg-amber-600 transition on">Fibonacci (Fem): ON</button>
+  </div>
+
+  <div class="grid grid-cols-2 gap-3 mb-4">
+    <button id="toggle-helix" class="py-2.5 px-4 rounded font-medium bg-purple-700/80 hover:bg-purple-600 transition on">Double Helix: ON</button>
+    <button id="toggle-tarot" class="py-2.5 px-4 rounded font-medium bg-orange-700/80 hover:bg-orange-600 transition on">Tarot Paths: ON</button>
+  </div>
+
+  <div class="grid grid-cols-2 gap-3 mb-4">
+    <button id="toggle-zodiac" class="py-2.5 px-4 rounded font-medium bg-teal-700/80 hover:bg-teal-600 transition on">Zodiac Wheel: ON</button>
+    <button onclick="resetView()" class="flex-1 bg-gray-700 hover:bg-gray-600 py-2.5 rounded font-medium">Reset View</button>
+  </div>
+
+  <div class="mt-auto pt-6 text-xs text-gray-600">
+    Drag to rotate • Scroll/pinch to zoom • Right-drag to pan
+  </div>
+</div>
+<div id="viewer"></div>
+
+<script>
+let scene, camera, renderer, labelRenderer, controls, group;
+let nodes = [];
+let boundaryPlanes = [];
+let boundaryLabels = [];
+let krystalSpiralLines = [];
+let fibonacciSpiralLines = [];
+let helixLines = [];
+let tarotPathLabels = [];
+let zodiacRing = null;
+let zodiacLabels = [];
+
+// All features ON by default
+let showLabels = true;
+let showEnglish = true;
+let showRealms = true;
+let showPlanets = true;
+let showKrystal = true;
+let showFibonacci = true;
+let showHelix = true;
+let showTarot = true;
+let showZodiac = true;
+
+// Clock time must be declared BEFORE animate() uses it
+let clockTime = 0;
+
+const chakraColors = [0x8b00ff,0x4b0082,0x0000ff,0x00ff00,0xffff00,0xff8c00,0xff0000,0xffd700,0xaaaaaa,0x777777,0x9999ff,0x88ff88,0xff88ff];
+
+const hebrewNames = [
+  "♈ Kether", "♉ Chokhmah", "♊ Binah", "♋ Chesed", "♌ Geburah",
+  "♍ Tiphareth", "♎ Netzach", "♏ Hod", "♐ Yesod", "♑ Malkuth",
+  "♒ Da'at", "♓ Extra 1", "Extra 2"
+];
+
+const englishNames = [
+  "Crown", "Wisdom", "Understanding", "Mercy", "Severity",
+  "Beauty", "Victory", "Splendor", "Foundation", "Kingdom",
+  "Knowledge", "Extra 1", "Extra 2"
+];
+
+const planetNames = [
+  "♆ Neptune / Pluto", "♃ Jupiter", "♄ Saturn", "♃ Jupiter", "♂ Mars",
+  "☉ Sun", "♀ Venus", "☿ Mercury", "☽ Moon", "♁ Earth",
+  "⛎ Uranus / Pluto", "—", "—"
+];
+
+const zodiacSigns = [
+  "♈ Aries", "♉ Taurus", "♊ Gemini", "♋ Cancer", "♌ Leo", "♍ Virgo",
+  "♎ Libra", "♏ Scorpio", "♐ Sagittarius", "♑ Capricorn", "♒ Aquarius", "♓ Pisces"
+];
+
+const realmData = [
+  { name: "Atziluth - Fire 🜂", y: 15, color: 0xffffff },
+  { name: "Briah - Water 🜄", y: 5, color: 0x4488ff },
+  { name: "Yetzirah - Air 🜁", y: -7, color: 0xffff88 },
+  { name: "Assiah - Earth 🜃", y: -17, color: 0x4444aa }
+];
+
+const positions = [
+  new THREE.Vector3(0, 20, 0),
+  new THREE.Vector3(14.1, 10, -10), new THREE.Vector3(-14.1, 10, -10),
+  new THREE.Vector3(14.1, 10, 10), new THREE.Vector3(-14.1, 10, 10),
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(14.1, -10, -10),new THREE.Vector3(-14.1, -10, -10),
+  new THREE.Vector3(0, 0, -20),
+  new THREE.Vector3(0, -20, 0),
+  new THREE.Vector3(0, 0, 20),
+  new THREE.Vector3(-14.1, -10, 10),
+  new THREE.Vector3(14.1, -10, 10)
+];
+
+init();
+create();
+animate();
+
+// TOGGLES (all start ON)
+document.getElementById('toggle-labels').onclick = function() {
+  showLabels = !showLabels;
+  this.classList.toggle('on', showLabels);
+  this.classList.toggle('off', !showLabels);
+  this.textContent = `Sephira Labels: ${showLabels ? 'ON' : 'OFF'}`;
+  nodes.forEach(n => n.label.visible = showLabels);
+};
+
+document.getElementById('toggle-english').onclick = function() {
+  showEnglish = !showEnglish;
+  this.classList.toggle('on', showEnglish);
+  this.classList.toggle('off', !showEnglish);
+  this.textContent = `English Names: ${showEnglish ? 'ON' : 'OFF'}`;
+  updateSephiraLabels();
+};
+
+document.getElementById('toggle-realms').onclick = function() {
+  showRealms = !showRealms;
+  this.classList.toggle('on', showRealms);
+  this.classList.toggle('off', !showRealms);
+  this.textContent = `Realms: ${showRealms ? 'ON' : 'OFF'}`;
+  boundaryPlanes.forEach(p => p.visible = showRealms);
+  boundaryLabels.forEach(l => l.visible = showRealms);
+};
+
+document.getElementById('toggle-planets').onclick = function() {
+  showPlanets = !showPlanets;
+  this.classList.toggle('on', showPlanets);
+  this.classList.toggle('off', !showPlanets);
+  this.textContent = `Planets: ${showPlanets ? 'ON' : 'OFF'}`;
+  updateSephiraLabels();
+};
+
+document.getElementById('toggle-krystal').onclick = function() {
+  showKrystal = !showKrystal;
+  this.classList.toggle('on', showKrystal);
+  this.classList.toggle('off', !showKrystal);
+  this.textContent = `Krystal (Masc): ${showKrystal ? 'ON' : 'OFF'}`;
+  krystalSpiralLines.forEach(l => l.visible = showKrystal);
+};
+
+document.getElementById('toggle-fibonacci').onclick = function() {
+  showFibonacci = !showFibonacci;
+  this.classList.toggle('on', showFibonacci);
+  this.classList.toggle('off', !showFibonacci);
+  this.textContent = `Fibonacci (Fem): ${showFibonacci ? 'ON' : 'OFF'}`;
+  fibonacciSpiralLines.forEach(l => l.visible = showFibonacci);
+};
+
+document.getElementById('toggle-helix').onclick = function() {
+  showHelix = !showHelix;
+  this.classList.toggle('on', showHelix);
+  this.classList.toggle('off', !showHelix);
+  this.textContent = `Double Helix: ${showHelix ? 'ON' : 'OFF'}`;
+  helixLines.forEach(l => l.visible = showHelix);
+};
+
+document.getElementById('toggle-tarot').onclick = function() {
+  showTarot = !showTarot;
+  this.classList.toggle('on', showTarot);
+  this.classList.toggle('off', !showTarot);
+  this.textContent = `Tarot Paths: ${showTarot ? 'ON' : 'OFF'}`;
+  tarotPathLabels.forEach(l => l.visible = showTarot);
+};
+
+document.getElementById('toggle-zodiac').onclick = function() {
+  showZodiac = !showZodiac;
+  this.classList.toggle('on', showZodiac);
+  this.classList.toggle('off', !showZodiac);
+  this.textContent = `Zodiac Wheel: ${showZodiac ? 'ON' : 'OFF'}`;
+  if (zodiacRing) zodiacRing.visible = showZodiac;
+  zodiacLabels.forEach(l => l.visible = showZodiac);
+};
+
+function updateSephiraLabels() {
+  nodes.forEach((node, i) => {
+    let mainText = showEnglish ? englishNames[i] : hebrewNames[i];
+    if (showPlanets) {
+      node.label.element.innerHTML = `
+        <div>${mainText}</div>
+        <div class="planet-label">${planetNames[i]}</div>
+      `;
+    } else {
+      node.label.element.textContent = mainText;
+    }
+  });
+}
+
+// INIT
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05050a);
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+  camera.position.set(0, 10, 35);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.getElementById('viewer').appendChild(renderer.domElement);
+  labelRenderer = new THREE.CSS2DRenderer();
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.domElement.style.position = 'absolute';
+  labelRenderer.domElement.style.top = '0';
+  labelRenderer.domElement.style.pointerEvents = 'none';
+  document.getElementById('viewer').appendChild(labelRenderer.domElement);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 5;
+  controls.maxDistance = 80;
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const dir = new THREE.DirectionalLight(0xffffff, 2);
+  dir.position.set(20, 30, 20);
+  scene.add(dir);
+  group = new THREE.Group();
+  scene.add(group);
+  window.addEventListener('resize', onResize);
+}
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+}
+function create() {
+  nodes = [];
+  // Realms
+  boundaryPlanes = [];
+  boundaryLabels = [];
+  realmData.forEach(b => {
+    const plane = new THREE.Mesh(
+      new THREE.CircleGeometry(30, 64),
+      new THREE.MeshBasicMaterial({
+        color: b.color,
+        transparent: true,
+        opacity: 0.08,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false
+      })
+    );
+    plane.rotation.x = Math.PI / 2;
+    plane.position.y = b.y;
+    plane.visible = showRealms;
+    group.add(plane);
+    boundaryPlanes.push(plane);
+    const lblDiv = document.createElement('div');
+    lblDiv.className = 'label boundary-label';
+    lblDiv.textContent = b.name;
+    const lblObj = new THREE.CSS2DObject(lblDiv);
+    lblObj.position.set(32, b.y + 1.2, 0);
+    lblObj.visible = showRealms;
+    group.add(lblObj);
+    boundaryLabels.push(lblObj);
+  });
+  // Sephiroth
+  positions.forEach((pos, i) => {
+    const geo = new THREE.SphereGeometry(1.2, 32, 32);
+    const mat = new THREE.MeshPhongMaterial({color: chakraColors[i], emissive: chakraColors[i], emissiveIntensity: 0.4, shininess: 60});
+    const sphere = new THREE.Mesh(geo, mat);
+    sphere.position.copy(pos);
+    group.add(sphere);
+    const container = document.createElement('div');
+    container.style.textAlign = 'center';
+    container.className = 'label sephira-label';
+    const mainLine = document.createElement('div');
+    mainLine.textContent = englishNames[i];
+    container.appendChild(mainLine);
+    const planetLine = document.createElement('div');
+    planetLine.className = 'planet-label';
+    planetLine.textContent = planetNames[i];
+    container.appendChild(planetLine);
+    const label = new THREE.CSS2DObject(container);
+    label.position.copy(pos.clone().multiplyScalar(1.15));
+    label.position.y -= 3.2;
+    label.visible = showLabels;
+    group.add(label);
+    nodes.push({mesh: sphere, label, mainLine, planetLine});
+  });
+  updateSephiraLabels();
+  // Metatron lines
+  const metaMat = new THREE.LineBasicMaterial({color: 0x88aaff, transparent: true, opacity: 0.5});
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i+1; j < positions.length; j++) {
+      const d = positions[i].distanceTo(positions[j]);
+      if (d > 1 && d < 35) {
+        const geo = new THREE.BufferGeometry().setFromPoints([positions[i], positions[j]]);
+        group.add(new THREE.Line(geo, metaMat));
+      }
+    }
+  }
+  // Tree paths
+  const treeMat = new THREE.LineBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.7});
+  const treePaths = [
+    [0,1],[0,2],[0,5],[0,10], [1,3],[1,5],[1,6],[1,10], [2,4],[2,5],[2,7],[2,10],
+    [3,5],[3,6], [4,5],[4,7], [5,6],[5,7],[5,8], [6,8],[6,9], [7,8],[7,9], [8,9],
+    [10,3],[10,4],[10,6],[10,7]
+  ];
+  treePaths.forEach(([a,b]) => {
+    const geo = new THREE.BufferGeometry().setFromPoints([positions[a], positions[b]]);
+    group.add(new THREE.Line(geo, treeMat));
+  });
+  // Tarot paths
+  tarotPathLabels = [];
+  const tarotPaths = [
+    [0,1, "The Fool"], [0,2, "The Magician"], [0,5, "The High Priestess"], [0,10,"The Empress"],
+    [1,3, "The Emperor"], [1,5, "The Hierophant"], [1,6, "The Lovers"], [1,10,"The Chariot"],
+    [2,4, "Strength"], [2,5, "The Hermit"], [2,7, "Wheel of Fortune"], [2,10,"Justice"],
+    [3,5, "The Hanged Man"], [3,6, "Death"], [4,5, "Temperance"], [4,7, "The Devil"],
+    [5,6, "The Tower"], [5,7, "The Star"], [5,8, "The Moon"], [6,8, "The Sun"],
+    [6,9, "Judgement"], [7,8, "The World"], [8,9, "The World"]
+  ];
+  tarotPaths.forEach(([a, b, name]) => {
+    const pA = positions[a];
+    const pB = positions[b];
+    const mid = new THREE.Vector3().addVectors(pA, pB).multiplyScalar(0.5);
+    const dir = new THREE.Vector3().subVectors(pB, pA).normalize();
+    const perp = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(1.8);
+    mid.add(perp);
+    const lblDiv = document.createElement('div');
+    lblDiv.className = 'label path-label';
+    lblDiv.textContent = name;
+    const deltaX = pB.x - pA.x;
+    const deltaZ = pB.z - pA.z;
+    let angleDeg = Math.atan2(deltaZ, deltaX) * (180 / Math.PI);
+    if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
+    lblDiv.style.transform = `rotate(${angleDeg}deg)`;
+    const label = new THREE.CSS2DObject(lblDiv);
+    label.position.copy(mid);
+    label.visible = showTarot;
+    group.add(label);
+    tarotPathLabels.push(label);
+  });
+  // Zodiac Wheel
+  const zodiacRadius = 28;
+  const zodiacY = 2;
+  const zodiacMat = new THREE.LineBasicMaterial({color: 0x88ffff, transparent: true, opacity: 0.25});
+  const ringPoints = [];
+  for (let i = 0; i <= 64; i++) {
+    const angle = (i / 64) * Math.PI * 2;
+    const x = zodiacRadius * Math.cos(angle);
+    const z = zodiacRadius * Math.sin(angle);
+    ringPoints.push(new THREE.Vector3(x, zodiacY, z));
+  }
+  const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPoints);
+  zodiacRing = new THREE.Line(ringGeo, zodiacMat);
+  zodiacRing.visible = showZodiac;
+  group.add(zodiacRing);
+  zodiacLabels = [];
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 + Math.PI / 12;
+    const x = (zodiacRadius + 4) * Math.cos(angle);
+    const z = (zodiacRadius + 4) * Math.sin(angle);
+    const lblDiv = document.createElement('div');
+    lblDiv.className = 'label zodiac-label';
+    lblDiv.textContent = zodiacSigns[i];
+    const label = new THREE.CSS2DObject(lblDiv);
+    label.position.set(x, zodiacY + 0.5, z);
+    label.visible = showZodiac;
+    group.add(label);
+    zodiacLabels.push(label);
+  }
+  // Krystal Spiral
+  krystalSpiralLines = [];
+  const krystalMat = new THREE.LineBasicMaterial({color: 0x00ffff, transparent: true, opacity: 0.75});
+  const kPoints = [];
+  const kTurns = 5.5;
+  const kSegments = 180;
+  const kRadiusGrowth = 0.55;
+  const kHeightDrop = 40;
+  for (let i = 0; i <= kSegments; i++) {
+    const t = i / kSegments;
+    const angle = t * Math.PI * 2 * kTurns + Math.PI * 0.2;
+    const y = 20 - t * kHeightDrop;
+    const r = kRadiusGrowth * Math.pow(1.8, t * 4);
+    const x = r * Math.cos(angle) * 0.7;
+    const z = r * Math.sin(angle) * 0.7;
+    kPoints.push(new THREE.Vector3(x, y, z));
+  }
+  for (let i = 0; i < kPoints.length - 1; i++) {
+    const geo = new THREE.BufferGeometry().setFromPoints([kPoints[i], kPoints[i+1]]);
+    const line = new THREE.Line(geo, krystalMat);
+    line.visible = showKrystal;
+    group.add(line);
+    krystalSpiralLines.push(line);
+  }
+  // Fibonacci Spiral
+  fibonacciSpiralLines = [];
+  const fibMat = new THREE.LineBasicMaterial({color: 0xffd700, transparent: true, opacity: 0.65});
+  const fPoints = [];
+  const fTurns = 6.5;
+  const fSegments = 220;
+  const phi = (1 + Math.sqrt(5)) / 2;
+  const fRadiusGrowth = 0.45;
+  const fHeightDrop = 40;
+  for (let i = 0; i <= fSegments; i++) {
+    const t = i / fSegments;
+    const angle = t * Math.PI * 2 * fTurns + Math.PI * 0.6;
+    const y = 20 - t * fHeightDrop;
+    const r = fRadiusGrowth * Math.pow(phi, t * 9);
+    const x = r * Math.cos(angle);
+    const z = r * Math.sin(angle) * 1.1;
+    fPoints.push(new THREE.Vector3(x, y, z));
+  }
+  for (let i = 0; i < fPoints.length - 1; i++) {
+    const geo = new THREE.BufferGeometry().setFromPoints([fPoints[i], fPoints[i+1]]);
+    const line = new THREE.Line(geo, fibMat);
+    line.visible = showFibonacci;
+    group.add(line);
+    fibonacciSpiralLines.push(line);
+  }
+  // Double Helix
+  helixLines = [];
+  const helixMat1 = new THREE.LineBasicMaterial({color: 0xffd700, transparent: true, opacity: 0.8});
+  const helixMat2 = new THREE.LineBasicMaterial({color: 0x00ffff, transparent: true, opacity: 0.8});
+  const helixSegments = 280;
+  const helixTurns = 8;
+  const helixRadius = 3.5;
+  const helixHeight = 42;
+  function addHelixStrand(mat, phase) {
+    const points = [];
+    for (let i = 0; i <= helixSegments; i++) {
+      const t = i / helixSegments;
+      const y = 20 - t * helixHeight;
+      const angle = t * Math.PI * 2 * helixTurns + phase;
+      const x = helixRadius * Math.cos(angle);
+      const z = helixRadius * Math.sin(angle);
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    for (let i = 0; i < points.length - 1; i++) {
+      const geo = new THREE.BufferGeometry().setFromPoints([points[i], points[i+1]]);
+      const line = new THREE.Line(geo, mat);
+      line.visible = showHelix;
+      group.add(line);
+      helixLines.push(line);
+    }
+  }
+  addHelixStrand(helixMat1, 0);
+  addHelixStrand(helixMat2, Math.PI);
+}
+function resetView() {
+  controls.reset();
+  camera.position.set(0, 10, 35);
+  controls.update();
+}
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  if (showZodiac && zodiacRing) {
+    clockTime += 0.0005;
+    zodiacRing.rotation.y = clockTime;
+    zodiacLabels.forEach((lbl, i) => {
+      const angle = (i / 12) * Math.PI * 2 + clockTime;
+      const x = (30 + 4) * Math.cos(angle);
+      const z = (30 + 4) * Math.sin(angle);
+      lbl.position.set(x, 2.5, z);
+    });
+  }
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
