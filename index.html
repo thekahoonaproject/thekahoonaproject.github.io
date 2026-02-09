@@ -1,149 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>The Kahoona Project</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Kahooona Project</title>
   <style>
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-      background: #0d1117;
-      color: #c9d1d9;
-      line-height: 1.6;
-    }
-    header {
-      background: #161b22;
-      border-bottom: 1px solid #30363d;
-      padding: 3.5rem 1rem 2.5rem;
-      text-align: center;
-    }
-    h1 {
-      margin: 0;
-      font-size: 3rem;
-      color: #58a6ff;
-    }
-    .tagline {
-      font-size: 1.25rem;
-      color: #8b949e;
-      margin-top: 0.5rem;
-    }
-    main {
-      max-width: 900px;
-      margin: 3rem auto;
-      padding: 0 1.5rem;
-    }
-    #loading {
-      text-align: center;
-      color: #8b949e;
-      font-style: italic;
-    }
-    #projects {
-      list-style: none;
-      padding: 0;
-    }
-    #projects li {
-      margin: 1rem 0;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    #projects a {
-      display: block;
-      padding: 1.5rem 1.8rem;
-      color: #58a6ff;
-      text-decoration: none;
-      font-size: 1.35rem;
-      font-weight: 500;
-      transition: background 0.15s;
-    }
-    #projects a:hover {
-      background: #1f6feb22;
-    }
-    .desc {
-      color: #8b949e;
-      font-size: 1rem;
-      margin-top: 0.4rem;
-    }
-    .error {
-      color: #f85149;
-      text-align: center;
-      padding: 2rem;
-    }
-    footer {
-      text-align: center;
-      padding: 3rem 1rem;
-      color: #8b949e;
-      font-size: 0.95rem;
-      border-top: 1px solid #30363d;
-    }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; line-height: 1.6; background: #fdfdfd; color: #222; }
+    h1 { text-align: center; margin-bottom: 2rem; }
+    h2 { text-align: center; color: #444; margin: 2rem 0 1rem; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 1rem 0; padding: 1rem; background: white; border: 1px solid #eee; border-radius: 6px; }
+    li:hover { border-color: #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    a { color: #0066cc; text-decoration: none; font-weight: 500; font-size: 1.2em; }
+    a:hover { text-decoration: underline; }
+    .desc { color: #555; font-size: 0.95em; margin-top: 0.3em; }
+    .error { color: #c00; text-align: center; }
+    .note { text-align: center; color: #777; margin-top: 4rem; font-size: 0.9em; }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1>The Kahoona Project</h1>
-    <div class="tagline">Creative experiments in geometry, code, visualisation & spirituality</div>
-  </header>
+  <h1>The Kahooona Project</h1>
 
-  <main>
-    <p id="loading">Loading projects...</p>
+  <h2>Projects</h2>
 
-    <ul id="projects"></ul>
+  <ul id="project-list">
+    <li>Loading projects...</li>
+  </ul>
 
-    <div id="error" class="error" style="display:none;"></div>
-  </main>
-
-  <footer>
-    © 2026 The Kahoona Project • 
-    <a href="https://github.com/thekahoonaproject/thekahoonaproject" style="color:#58a6ff;">View on GitHub</a>
-  </footer>
+  <p class="note">Projects are auto-listed from the /projects folder • Add new folders/files there</p>
 
   <script>
-    const repo = 'thekahoonaproject/thekahoonaproject';
-    const apiUrl = `https://api.github.com/repos/${repo}/contents`;
-    const skip = ['index.html', 'README.md', '.gitignore', '.nojekyll', 'CNAME', 'assets', 'css', 'js', 'img', '.github'];
+    fetch('https://api.github.com/repos/thekahoonaproject/thekahoonaproject.github.io/contents/projects')
+      .then(res => res.json())
+      .then(data => {
+        const list = document.getElementById('project-list');
+        list.innerHTML = '';
 
-    fetch(apiUrl)
-      .then(r => {
-        if (!r.ok) throw new Error(`GitHub API error: ${r.status}`);
-        return r.json();
-      })
-      .then(items => {
-        document.getElementById('loading').style.display = 'none';
+        if (data.message) { // error like Not Found
+          list.innerHTML = '<li class="error">Could not load projects folder.<br>Check if /projects exists in the repo.</li>';
+          return;
+        }
 
-        const list = document.getElementById('projects');
-        let hasItems = false;
+        data.forEach(item => {
+          if (item.type !== 'file' && item.type !== 'dir') return; // skip other types
 
-        items.forEach(item => {
-          if (item.type === 'dir' && !skip.includes(item.name)) {
-            hasItems = true;
-            const li = document.createElement('li');
-            const a = document.createElement('a');
-            a.href = item.name + '/';
-            a.textContent = item.name;
+          const li = document.createElement('li');
+          const a = document.createElement('a');
 
+          let displayName = item.name
+            .replace(/[-_]/g, ' ')
+            .replace(/\.[^/.]+$/, "")          // remove .html extension if present
+            .replace(/\b\w/g, c => c.toUpperCase());
+
+          if (item.type === 'dir') {
+            a.href = `projects/${item.name}/`;   // assumes folder has index.html
+            a.textContent = displayName || item.name;
             const desc = document.createElement('div');
             desc.className = 'desc';
-            desc.textContent = 'Project folder – click to view';  // you can improve later with manual map if wanted
-
+            desc.textContent = 'Project folder';
             li.appendChild(a);
             li.appendChild(desc);
-            list.appendChild(li);
+          } else if (item.name.endsWith('.html')) {
+            a.href = `projects/${item.name}`;
+            a.textContent = displayName || item.name;
+            const desc = document.createElement('div');
+            desc.className = 'desc';
+            desc.textContent = 'Standalone HTML page';
+            li.appendChild(a);
+            li.appendChild(desc);
+          } else {
+            return; // skip non-html files
           }
+
+          list.appendChild(li);
         });
 
-        if (!hasItems) {
-          document.getElementById('projects').innerHTML = '<li class="error">No project folders found yet. Add some!</li>';
+        if (list.children.length === 0) {
+          list.innerHTML = '<li>No HTML files or subfolders found in /projects yet.</li>';
         }
       })
       .catch(err => {
-        document.getElementById('loading').style.display = 'none';
-        const errDiv = document.getElementById('error');
-        errDiv.textContent = 'Could not load projects automatically. ' + err.message + 
-                             ' (Check repo is public & try refreshing.)';
-        errDiv.style.display = 'block';
+        document.getElementById('project-list').innerHTML = 
+          '<li class="error">Failed to load project list.<br>(GitHub API issue or rate limit)</li>';
+        console.error(err);
       });
   </script>
 
