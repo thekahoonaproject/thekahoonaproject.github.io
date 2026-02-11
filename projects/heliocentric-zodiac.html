@@ -12,13 +12,22 @@
   body { margin:0; overflow:hidden; background:#0a0a0f; font-family:system-ui,sans-serif; }
   #viewer { position:absolute; inset:0; }
   #sidebar { position:absolute; left:0; top:0; bottom:0; width:360px; background:rgba(15,15,30,0.94); backdrop-filter:blur(12px); border-right:1px solid #333; overflow-y:auto; z-index:10; padding:24px; }
+  #chart-overlay { position:absolute; right:20px; top:20px; width:340px; background:rgba(15,15,30,0.96); backdrop-filter:blur(12px); border:1px solid #444; border-radius:12px; padding:20px; z-index:10; }
   .label { pointer-events:none; font-weight:bold; text-shadow:0 0 8px #000, 0 0 12px #000; white-space:nowrap; font-size:21px; color:#f0f0ff; }
   button.on { background-color:#6366f1 !important; color:white; }
   button.off { background-color:#4b5563 !important; color:white; }
   #toggle-view { transition: all 0.3s; }
   #toggle-view.heliocentric { background: linear-gradient(to right, #6366f1, #a855f7); }
   #toggle-view.geocentric   { background: linear-gradient(to right, #10b981, #34d399); }
-  .planet-info { font-size: 11px; opacity: 0.8; margin-top: 8px; }
+  
+  #astro-chart { position: relative; width: 300px; height: 300px; margin: 0 auto; }
+  .chart-circle { position: absolute; border-radius: 50%; border: 2px solid #5577aa; }
+  .chart-wheel { width: 300px; height: 300px; top: 0; left: 0; }
+  .chart-inner { width: 200px; height: 200px; top: 50px; left: 50px; border-color: #667799; }
+  .house-line { position: absolute; width: 2px; height: 150px; background: #667799; top: 0; left: 149px; transform-origin: 1px 150px; opacity: 0.5; }
+  .planet-marker { position: absolute; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; background: rgba(0,0,0,0.7); border: 2px solid; transform: translate(-50%, -50%); }
+  .planet-degree { position: absolute; font-size: 10px; color: #aaa; margin-top: 32px; white-space: nowrap; }
+  .sign-label { position: absolute; font-size: 11px; color: #99aacc; font-weight: bold; transform: translate(-50%, -50%); }
 </style>
 </head>
 <body class="text-gray-200">
@@ -37,6 +46,7 @@
     <button id="toggle-lines" class="w-full py-3 px-4 rounded font-medium bg-amber-700/80 hover:bg-amber-600 transition on">Sight Lines: ON</button>
     <button id="toggle-zodiac" class="w-full py-3 px-4 rounded font-medium bg-teal-700/80 hover:bg-teal-600 transition on">Zodiac: ON</button>
     <button id="toggle-stars" class="w-full py-3 px-4 rounded font-medium bg-purple-700/80 hover:bg-purple-600 transition on">Stars: ON</button>
+    <button id="toggle-chart" class="w-full py-3 px-4 rounded font-medium bg-rose-700/80 hover:bg-rose-600 transition on">Chart: ON</button>
   </div>
 
   <div class="mt-8">
@@ -51,8 +61,16 @@
 
   <button id="pause-btn" onclick="togglePause()" class="w-full mt-6 py-3 px-4 rounded font-medium bg-emerald-700 hover:bg-emerald-600">Pause</button>
   <button onclick="resetView()" class="w-full mt-3 py-3 px-4 rounded font-medium bg-gray-700 hover:bg-gray-600">Reset View</button>
+</div>
 
-  <div id="planet-positions" class="mt-6 text-xs space-y-1"></div>
+<div id="chart-overlay">
+  <h2 class="text-xl font-bold mb-4 text-center">Live Astrological Chart</h2>
+  <div id="astro-chart">
+    <div class="chart-circle chart-wheel"></div>
+    <div class="chart-circle chart-inner"></div>
+    <!-- House lines will be added dynamically -->
+  </div>
+  <div id="planet-positions" class="mt-4 text-xs space-y-1"></div>
 </div>
 
 <div id="viewer"></div>
@@ -62,23 +80,24 @@
 const inclinations = { Mercury:7.005, Venus:3.395, Earth:0, Mars:1.850, Jupiter:1.304, Saturn:2.488, Uranus:0.773, Neptune:1.770 };
 
 const planetData = [
-  {name:"Sun",     symbol:"☉", radius:0,    period:0,     size:26,  color:0xffee88, initial:0},
-  {name:"Mercury", symbol:"☿", radius:65,   period:88,    size:7,   color:0xbbbbbb, initial:4.85},
-  {name:"Venus",   symbol:"♀", radius:98,   period:225,   size:10,  color:0xffccaa, initial:5.35},
-  {name:"Earth",   symbol:"🜨", radius:135,  period:365.25,size:11,  tex:"https://upload.wikimedia.org/wikipedia/commons/c/c3/Solarsystemscope_texture_2k_earth_daymap.jpg", initial:0.35},
-  {name:"Mars",    symbol:"♂", radius:175,  period:687,   size:8.5, color:0xff5555, initial:0.95},
-  {name:"Jupiter", symbol:"♃", radius:260,  period:4333,  size:18,  color:0xffaa33, initial:1.65},
-  {name:"Saturn",  symbol:"♄", radius:320,  period:10759, size:15,  color:0xeeeeee, initial:3.45},
-  {name:"Uranus",  symbol:"⛢", radius:380,  period:30687, size:12,  color:0x88ffff, initial:5.10},
-  {name:"Neptune", symbol:"♆", radius:430,  period:60190, size:12,  color:0x7777ff, initial:5.75}
+  {name:"Sun",     symbol:"☉", radius:0,    period:0,     size:26,  color:0xffee88, initial:0, chartColor:"#ffdd66"},
+  {name:"Mercury", symbol:"☿", radius:65,   period:88,    size:7,   color:0xbbbbbb, initial:4.85, chartColor:"#bbbbbb"},
+  {name:"Venus",   symbol:"♀", radius:98,   period:225,   size:10,  color:0xffccaa, initial:5.35, chartColor:"#ffccaa"},
+  {name:"Earth",   symbol:"🜨", radius:135,  period:365.25,size:11,  tex:"https://upload.wikimedia.org/wikipedia/commons/c/c3/Solarsystemscope_texture_2k_earth_daymap.jpg", initial:0.35, chartColor:"#4488ff"},
+  {name:"Mars",    symbol:"♂", radius:175,  period:687,   size:8.5, color:0xff5555, initial:0.95, chartColor:"#ff5555"},
+  {name:"Jupiter", symbol:"♃", radius:260,  period:4333,  size:18,  color:0xffaa33, initial:1.65, chartColor:"#ffaa33"},
+  {name:"Saturn",  symbol:"♄", radius:320,  period:10759, size:15,  color:0xeeeeee, initial:3.45, chartColor:"#cccccc"},
+  {name:"Uranus",  symbol:"⛢", radius:380,  period:30687, size:12,  color:0x88ffff, initial:5.10, chartColor:"#88ffff"},
+  {name:"Neptune", symbol:"♆", radius:430,  period:60190, size:12,  color:0x7777ff, initial:5.75, chartColor:"#7777ff"}
 ];
 
 const signs = ["♈ Aries","♉ Taurus","♊ Gemini","♋ Cancer","♌ Leo","♍ Virgo","♎ Libra","♏ Scorpio","♐ Sagittarius","♑ Capricorn","♒ Aquarius","♓ Pisces"];
+const signSymbols = ["♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓"];
 
 let scene, camera, renderer, labelRenderer, controls;
 let planets = [], sunMesh, moon, zodiacGroup, orbits = [], sightLines = [], starField;
 let isGeocentric = false;
-let showLabels = true, showOrbits = true, showLines = true, showZodiac = true, showStars = true;
+let showLabels = true, showOrbits = true, showLines = true, showZodiac = true, showStars = true, showChart = true;
 let isPaused = false;
 let timeScale = 1;
 let clock = new THREE.Clock();
@@ -86,6 +105,7 @@ let animationTime = 0;
 
 init();
 createScene();
+createAstroChart();
 animate();
 
 function init() {
@@ -113,11 +133,16 @@ function init() {
   controls.minDistance = 80; 
   controls.maxDistance = 2200;
 
-  scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+  // Better lighting for textures
+  scene.add(new THREE.AmbientLight(0x404040, 1.5)); // Increased ambient light
   
-  const sunLight = new THREE.PointLight(0xffffff, 4, 0);
+  const sunLight = new THREE.PointLight(0xffffff, 3.5, 0);
   sunLight.name = "sunLight";
   scene.add(sunLight);
+
+  // Add hemisphere light for better visibility
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+  scene.add(hemiLight);
 
   window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; 
@@ -160,7 +185,13 @@ function createScene() {
     if (p.tex) {
       const tex = new THREE.TextureLoader().load(p.tex);
       tex.colorSpace = THREE.SRGBColorSpace;
-      mat = new THREE.MeshPhongMaterial({map: tex, emissive:0x112244, emissiveIntensity:0.3});
+      // Better material for Earth with emissive to make it visible
+      mat = new THREE.MeshPhongMaterial({
+        map: tex, 
+        emissive: 0x222233, 
+        emissiveIntensity: 0.15,
+        shininess: 15
+      });
     } else {
       mat = new THREE.MeshPhongMaterial({
         color: p.color, 
@@ -183,11 +214,16 @@ function createScene() {
     planets.push({mesh, label, data: p});
   });
 
-  // Moon
+  // Moon with better visibility
   const moonTex = new THREE.TextureLoader().load("https://upload.wikimedia.org/wikipedia/commons/2/26/Solarsystemscope_texture_2k_moon.jpg");
   moon = new THREE.Mesh(
     new THREE.SphereGeometry(4.8, 32, 32), 
-    new THREE.MeshPhongMaterial({map: moonTex})
+    new THREE.MeshPhongMaterial({
+      map: moonTex,
+      emissive: 0x222222,
+      emissiveIntensity: 0.2,
+      shininess: 5
+    })
   );
   moon.name = "Moon";
   scene.add(moon);
@@ -198,21 +234,33 @@ function createScene() {
   moon.label = new THREE.CSS2DObject(moonDiv); 
   scene.add(moon.label);
 
-  // Orbits
+  // Orbits - both inclined and flat
   planetData.forEach(p => {
     if (p.radius === 0) return;
     const curve = new THREE.EllipseCurve(0, 0, p.radius, p.radius);
     const points = curve.getPoints(100);
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const line = new THREE.Line(
-      geometry,
+    
+    // Inclined orbit (actual)
+    const inclinedLine = new THREE.Line(
+      geometry.clone(),
       new THREE.LineBasicMaterial({color:0x334466, transparent:true, opacity:0.3})
     );
     const inc = (inclinations[p.name] || 0) * Math.PI/180;
-    line.rotation.x = inc;
-    line.name = `${p.name}Orbit`;
-    scene.add(line);
-    orbits.push(line);
+    inclinedLine.rotation.x = inc;
+    inclinedLine.name = `${p.name}OrbitInclined`;
+    scene.add(inclinedLine);
+    orbits.push(inclinedLine);
+    
+    // Flat orbit on XZ plane (ecliptic projection)
+    const flatLine = new THREE.Line(
+      geometry.clone(),
+      new THREE.LineBasicMaterial({color:0x445566, transparent:true, opacity:0.2})
+    );
+    flatLine.rotation.x = Math.PI / 2; // Flat on XZ plane
+    flatLine.name = `${p.name}OrbitFlat`;
+    scene.add(flatLine);
+    orbits.push(flatLine);
   });
 
   // Zodiac wheel - aligned with ecliptic plane (Earth's orbit)
@@ -256,6 +304,90 @@ function createScene() {
   scene.add(zodiacGroup);
 }
 
+function createAstroChart() {
+  const chartDiv = document.getElementById('astro-chart');
+  
+  // Create 12 house lines
+  for (let i = 0; i < 12; i++) {
+    const line = document.createElement('div');
+    line.className = 'house-line';
+    line.style.transform = `rotate(${i * 30}deg)`;
+    chartDiv.appendChild(line);
+  }
+  
+  // Add zodiac sign labels around the wheel
+  for (let i = 0; i < 12; i++) {
+    const angle = (i * 30 - 90) * Math.PI / 180; // Start at Aries (top)
+    const radius = 135;
+    const x = 150 + radius * Math.cos(angle);
+    const y = 150 + radius * Math.sin(angle);
+    
+    const signLabel = document.createElement('div');
+    signLabel.className = 'sign-label';
+    signLabel.textContent = signSymbols[i];
+    signLabel.style.left = x + 'px';
+    signLabel.style.top = y + 'px';
+    chartDiv.appendChild(signLabel);
+  }
+}
+
+function updateAstroChart(planetPositions) {
+  const chartDiv = document.getElementById('astro-chart');
+  
+  // Remove old planet markers
+  chartDiv.querySelectorAll('.planet-marker').forEach(el => el.remove());
+  
+  // Add planet markers
+  Object.entries(planetPositions).forEach(([name, data]) => {
+    const angle = (data.angle - 90) * Math.PI / 180; // Convert to radians, adjust for top = 0°
+    const radius = 115; // Position on chart
+    const x = 150 + radius * Math.cos(angle);
+    const y = 150 + radius * Math.sin(angle);
+    
+    const marker = document.createElement('div');
+    marker.className = 'planet-marker';
+    marker.style.left = x + 'px';
+    marker.style.top = y + 'px';
+    marker.style.borderColor = data.color;
+    marker.innerHTML = data.symbol;
+    
+    const degreeLabel = document.createElement('div');
+    degreeLabel.className = 'planet-degree';
+    degreeLabel.textContent = `${data.sign} ${data.degree.toFixed(1)}°`;
+    marker.appendChild(degreeLabel);
+    
+    chartDiv.appendChild(marker);
+  });
+  
+  // Update position list
+  const posDiv = document.getElementById('planet-positions');
+  let html = '<div class="font-bold mb-2 text-sm">Planetary Positions:</div>';
+  Object.entries(planetPositions).forEach(([name, data]) => {
+    html += `<div style="color:${data.color}">
+      ${data.symbol} ${name}: ${data.sign} ${data.degree.toFixed(1)}°
+    </div>`;
+  });
+  posDiv.innerHTML = html;
+}
+
+function calculateZodiacPosition(x, z) {
+  // Calculate angle from position (0° = Aries = positive X axis)
+  let angle = Math.atan2(z, x) * 180 / Math.PI;
+  if (angle < 0) angle += 360;
+  
+  // Determine sign (each sign is 30°)
+  const signIndex = Math.floor(angle / 30);
+  const degreeInSign = angle % 30;
+  
+  return {
+    angle: angle,
+    sign: signs[signIndex].split(' ')[1],
+    signSymbol: signSymbols[signIndex],
+    degree: degreeInSign,
+    fullSign: signs[signIndex]
+  };
+}
+
 function animate() {
   requestAnimationFrame(animate);
   
@@ -287,17 +419,40 @@ function animate() {
     }
   });
 
+  // Store positions for chart calculation
+  let chartPositions = {};
+
   // Apply coordinate system transformation
   if (isGeocentric) {
     // In geocentric view, Earth is at center (0,0,0)
     // Sun and all planets move relative to Earth
     sunMesh.position.copy(earthPos).negate();
     
+    // Calculate Sun's zodiac position
+    const sunZodiac = calculateZodiacPosition(sunMesh.position.x, sunMesh.position.z);
+    chartPositions['Sun'] = {
+      symbol: '☉',
+      angle: sunZodiac.angle,
+      sign: sunZodiac.sign,
+      degree: sunZodiac.degree,
+      color: '#ffdd66'
+    };
+    
     planets.forEach(p => {
       if (p.data.name === "Earth") {
         p.mesh.position.set(0, 0, 0);
       } else {
         p.mesh.position.copy(heliocentricPositions[p.data.name]).sub(earthPos);
+        
+        // Calculate zodiac position
+        const zodiac = calculateZodiacPosition(p.mesh.position.x, p.mesh.position.z);
+        chartPositions[p.data.name] = {
+          symbol: p.data.symbol,
+          angle: zodiac.angle,
+          sign: zodiac.sign,
+          degree: zodiac.degree,
+          color: p.data.chartColor
+        };
       }
     });
     
@@ -313,14 +468,44 @@ function animate() {
     planets.forEach(p => {
       if (heliocentricPositions[p.data.name]) {
         p.mesh.position.copy(heliocentricPositions[p.data.name]);
+        
+        // Calculate zodiac position from Earth's perspective
+        const relativePos = new THREE.Vector3()
+          .copy(p.mesh.position)
+          .sub(earthPos);
+        
+        const zodiac = calculateZodiacPosition(relativePos.x, relativePos.z);
+        chartPositions[p.data.name] = {
+          symbol: p.data.symbol,
+          angle: zodiac.angle,
+          sign: zodiac.sign,
+          degree: zodiac.degree,
+          color: p.data.chartColor
+        };
       }
     });
+    
+    // Sun as seen from Earth
+    const sunRelative = new THREE.Vector3().copy(earthPos).negate();
+    const sunZodiac = calculateZodiacPosition(sunRelative.x, sunRelative.z);
+    chartPositions['Sun'] = {
+      symbol: '☉',
+      angle: sunZodiac.angle,
+      sign: sunZodiac.sign,
+      degree: sunZodiac.degree,
+      color: '#ffdd66'
+    };
     
     // Light stays at origin
     const sunLight = scene.getObjectByName("sunLight");
     if (sunLight) {
       sunLight.position.set(0, 0, 0);
     }
+  }
+
+  // Update astrological chart
+  if (showChart) {
+    updateAstroChart(chartPositions);
   }
 
   // Update labels
@@ -452,6 +637,13 @@ document.getElementById('toggle-stars').addEventListener('click', function() {
   starField.visible = showStars;
   this.classList.toggle('on', showStars);
   this.textContent = `Stars: ${showStars ? 'ON' : 'OFF'}`;
+});
+
+document.getElementById('toggle-chart').addEventListener('click', function() {
+  showChart = !showChart;
+  document.getElementById('chart-overlay').style.display = showChart ? 'block' : 'none';
+  this.classList.toggle('on', showChart);
+  this.textContent = `Chart: ${showChart ? 'ON' : 'OFF'}`;
 });
 
 function setSpeed(v) {
