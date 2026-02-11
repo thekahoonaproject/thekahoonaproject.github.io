@@ -5,8 +5,8 @@
 <title>Esoteric Chart • True Geocentric Mode</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-<script src="https://unpkg.com/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://unpkg.com/three@0.134.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/renderers/CSS2DRenderer.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { margin:0; overflow:hidden; background:#0a0a0f; font-family:system-ui,sans-serif; }
@@ -18,13 +18,14 @@
   #toggle-view { transition: all 0.3s; }
   #toggle-view.heliocentric { background: linear-gradient(to right, #6366f1, #a855f7); }
   #toggle-view.geocentric   { background: linear-gradient(to right, #10b981, #34d399); }
+  .planet-info { font-size: 11px; opacity: 0.8; margin-top: 8px; }
 </style>
 </head>
 <body class="text-gray-200">
 
 <div id="sidebar">
   <h1 class="text-3xl font-bold mb-1 text-center">Esoteric 3D</h1>
-  <p class="text-gray-400 text-center mb-4">Heliocentric ↔ Geocentric</p>
+  <p class="text-gray-400 text-center mb-4">Astronomically Accurate Astrology</p>
 
   <button id="toggle-view" class="w-full py-4 px-4 rounded font-medium text-lg font-bold heliocentric">
     Switch to Geocentric
@@ -50,12 +51,14 @@
 
   <button id="pause-btn" onclick="togglePause()" class="w-full mt-6 py-3 px-4 rounded font-medium bg-emerald-700 hover:bg-emerald-600">Pause</button>
   <button onclick="resetView()" class="w-full mt-3 py-3 px-4 rounded font-medium bg-gray-700 hover:bg-gray-600">Reset View</button>
+
+  <div id="planet-positions" class="mt-6 text-xs space-y-1"></div>
 </div>
 
 <div id="viewer"></div>
 
 <script>
-// Real inclinations (degrees)
+// Real inclinations (degrees) relative to ecliptic
 const inclinations = { Mercury:7.005, Venus:3.395, Earth:0, Mars:1.850, Jupiter:1.304, Saturn:2.488, Uranus:0.773, Neptune:1.770 };
 
 const planetData = [
@@ -73,37 +76,54 @@ const planetData = [
 const signs = ["♈ Aries","♉ Taurus","♊ Gemini","♋ Cancer","♌ Leo","♍ Virgo","♎ Libra","♏ Scorpio","♐ Sagittarius","♑ Capricorn","♒ Aquarius","♓ Pisces"];
 
 let scene, camera, renderer, labelRenderer, controls;
-let planets = [], moon, zodiacGroup, orbits = [], earthLines = [], starField;
+let planets = [], sunMesh, moon, zodiacGroup, orbits = [], sightLines = [], starField;
 let isGeocentric = false;
 let showLabels = true, showOrbits = true, showLines = true, showZodiac = true, showStars = true;
 let isPaused = false;
 let timeScale = 1;
 let clock = new THREE.Clock();
+let animationTime = 0;
 
 init();
 createScene();
 animate();
 
 function init() {
-  scene = new THREE.Scene(); scene.background = new THREE.Color(0x050508);
+  scene = new THREE.Scene(); 
+  scene.background = new THREE.Color(0x050508);
+  
   camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 5000);
   camera.position.set(260, 320, 450);
-  renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(devicePixelRatio);
+  
+  renderer = new THREE.WebGLRenderer({antialias:true}); 
+  renderer.setSize(innerWidth, innerHeight); 
+  renderer.setPixelRatio(devicePixelRatio);
   document.getElementById('viewer').appendChild(renderer.domElement);
 
-  labelRenderer = new THREE.CSS2DRenderer(); labelRenderer.setSize(innerWidth, innerHeight);
-  labelRenderer.domElement.style.position = 'absolute'; labelRenderer.domElement.style.top = '0'; labelRenderer.domElement.style.pointerEvents = 'none';
+  labelRenderer = new THREE.CSS2DRenderer(); 
+  labelRenderer.setSize(innerWidth, innerHeight);
+  labelRenderer.domElement.style.position = 'absolute'; 
+  labelRenderer.domElement.style.top = '0'; 
+  labelRenderer.domElement.style.pointerEvents = 'none';
   document.getElementById('viewer').appendChild(labelRenderer.domElement);
 
-  controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = 0.12;
-  controls.minDistance = 80; controls.maxDistance = 2200;
+  controls = new THREE.OrbitControls(camera, renderer.domElement); 
+  controls.enableDamping = true; 
+  controls.dampingFactor = 0.12;
+  controls.minDistance = 80; 
+  controls.maxDistance = 2200;
 
   scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-  scene.add(new THREE.PointLight(0xffffff, 4, 0).position.set(0,0,0));
+  
+  const sunLight = new THREE.PointLight(0xffffff, 4, 0);
+  sunLight.name = "sunLight";
+  scene.add(sunLight);
 
   window.addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth / innerHeight; 
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight); 
+    labelRenderer.setSize(innerWidth, innerHeight);
   });
 }
 
@@ -118,22 +138,40 @@ function createScene() {
   scene.add(starField);
 
   // Sun
-  const sun = new THREE.Mesh(new THREE.SphereGeometry(26, 64, 64), new THREE.MeshBasicMaterial({color:0xffee88}));
-  scene.add(sun);
+  sunMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(26, 64, 64), 
+    new THREE.MeshBasicMaterial({color:0xffee88})
+  );
+  sunMesh.name = "Sun";
+  scene.add(sunMesh);
+
+  const sunDiv = document.createElement('div');
+  sunDiv.className = 'label';
+  sunDiv.innerHTML = `☉ <span style="font-size:0.82em">Sun</span>`;
+  sunMesh.label = new THREE.CSS2DObject(sunDiv);
+  scene.add(sunMesh.label);
 
   // Planets
   planets = [];
   planetData.forEach(p => {
-    if (p.radius === 0) return;
+    if (p.radius === 0) return; // Skip Sun in planet array
+    
     let mat;
     if (p.tex) {
       const tex = new THREE.TextureLoader().load(p.tex);
       tex.colorSpace = THREE.SRGBColorSpace;
       mat = new THREE.MeshPhongMaterial({map: tex, emissive:0x112244, emissiveIntensity:0.3});
     } else {
-      mat = new THREE.MeshPhongMaterial({color: p.color, emissive: p.color, emissiveIntensity: 0.8, shininess: 10});
+      mat = new THREE.MeshPhongMaterial({
+        color: p.color, 
+        emissive: p.color, 
+        emissiveIntensity: 0.8, 
+        shininess: 10
+      });
     }
+    
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 48, 48), mat);
+    mesh.name = p.name;
     scene.add(mesh);
 
     const div = document.createElement('div');
@@ -141,41 +179,74 @@ function createScene() {
     div.innerHTML = `${p.symbol} <span style="font-size:0.82em">${p.name}</span>`;
     const label = new THREE.CSS2DObject(div);
     scene.add(label);
+    
     planets.push({mesh, label, data: p});
   });
 
   // Moon
   const moonTex = new THREE.TextureLoader().load("https://upload.wikimedia.org/wikipedia/commons/2/26/Solarsystemscope_texture_2k_moon.jpg");
-  moon = new THREE.Mesh(new THREE.SphereGeometry(4.8, 32, 32), new THREE.MeshPhongMaterial({map: moonTex}));
+  moon = new THREE.Mesh(
+    new THREE.SphereGeometry(4.8, 32, 32), 
+    new THREE.MeshPhongMaterial({map: moonTex})
+  );
+  moon.name = "Moon";
   scene.add(moon);
-  const moonDiv = document.createElement('div'); moonDiv.className = 'label';
+  
+  const moonDiv = document.createElement('div'); 
+  moonDiv.className = 'label';
   moonDiv.innerHTML = `☽ Moon`;
-  moon.label = new THREE.CSS2DObject(moonDiv); scene.add(moon.label);
+  moon.label = new THREE.CSS2DObject(moonDiv); 
+  scene.add(moon.label);
 
   // Orbits
   planetData.forEach(p => {
     if (p.radius === 0) return;
-    const curve = new THREE.EllipseCurve(0,0,p.radius,p.radius);
+    const curve = new THREE.EllipseCurve(0, 0, p.radius, p.radius);
     const points = curve.getPoints(100);
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({color:0x334466, transparent:true, opacity:0.3}));
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(
+      geometry,
+      new THREE.LineBasicMaterial({color:0x334466, transparent:true, opacity:0.3})
+    );
     const inc = (inclinations[p.name] || 0) * Math.PI/180;
     line.rotation.x = inc;
+    line.name = `${p.name}Orbit`;
     scene.add(line);
     orbits.push(line);
   });
 
-  // Zodiac wheel
+  // Zodiac wheel - aligned with ecliptic plane (Earth's orbit)
   zodiacGroup = new THREE.Group();
   const r = 580;
-  const torus = new THREE.Mesh(new THREE.TorusGeometry(r, 12, 16, 128), new THREE.MeshBasicMaterial({color:0x5577aa, transparent:true, opacity:0.55, side:THREE.DoubleSide}));
+  
+  const torus = new THREE.Mesh(
+    new THREE.TorusGeometry(r, 12, 16, 128), 
+    new THREE.MeshBasicMaterial({
+      color:0x5577aa, 
+      transparent:true, 
+      opacity:0.55, 
+      side:THREE.DoubleSide
+    })
+  );
   torus.rotation.x = Math.PI/2;
   zodiacGroup.add(torus);
 
+  // Zodiac starts at vernal equinox (Aries at 0°)
   for (let i = 0; i < 12; i++) {
-    const ang = i * (Math.PI*2/12) - Math.PI/2;
-    zodiacGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,8,0), new THREE.Vector3(r*1.05*Math.cos(ang),8,r*1.05*Math.sin(ang))]), new THREE.LineBasicMaterial({color:0x99aaff, transparent:true, opacity:0.45})));
+    const ang = i * (Math.PI*2/12); // Start at 0 for Aries
+    
+    zodiacGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 8, 0), 
+        new THREE.Vector3(r*1.05*Math.cos(ang), 8, r*1.05*Math.sin(ang))
+      ]), 
+      new THREE.LineBasicMaterial({color:0x99aaff, transparent:true, opacity:0.45})
+    ));
 
-    const div = document.createElement('div'); div.className = 'label'; div.style.textAlign = 'center'; div.style.lineHeight = '1.1';
+    const div = document.createElement('div'); 
+    div.className = 'label'; 
+    div.style.textAlign = 'center'; 
+    div.style.lineHeight = '1.1';
     div.innerHTML = `<div style="font-size:15px;opacity:0.85">${signs[i].split(' ')[1]}</div><div style="font-size:38px">${signs[i].split(' ')[0]}</div>`;
     const lbl = new THREE.CSS2DObject(div);
     const rr = r * 1.17;
@@ -187,11 +258,19 @@ function createScene() {
 
 function animate() {
   requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
-  const days = t * timeScale;
+  
+  if (!isPaused) {
+    animationTime += clock.getDelta() * timeScale;
+  } else {
+    clock.getDelta(); // Keep clock running to avoid jumps
+  }
+  
+  const days = animationTime;
 
-  // Calculate heliocentric positions
-  let earthPos = new THREE.Vector3(0,0,0);
+  // Calculate heliocentric positions first
+  let earthPos = new THREE.Vector3(0, 0, 0);
+  let heliocentricPositions = {};
+  
   planets.forEach(p => {
     if (!p.data.period) return;
     const ang = p.data.initial + 2 * Math.PI * days / p.data.period;
@@ -201,52 +280,113 @@ function animate() {
     let z = p.data.radius * Math.sin(ang) * Math.cos(inc);
     let y = p.data.radius * Math.sin(ang) * Math.sin(inc);
 
-    p.mesh.position.set(x, y, z);
-
-    if (p.data.name === "Earth") earthPos.copy(p.mesh.position);
+    heliocentricPositions[p.data.name] = new THREE.Vector3(x, y, z);
+    
+    if (p.data.name === "Earth") {
+      earthPos.copy(heliocentricPositions.Earth);
+    }
   });
 
-  // Geocentric transformation: subtract Earth's position from all other bodies
+  // Apply coordinate system transformation
   if (isGeocentric) {
+    // In geocentric view, Earth is at center (0,0,0)
+    // Sun and all planets move relative to Earth
+    sunMesh.position.copy(earthPos).negate();
+    
     planets.forEach(p => {
-      if (p.data.name !== "Earth") {
-        p.mesh.position.sub(earthPos);
+      if (p.data.name === "Earth") {
+        p.mesh.position.set(0, 0, 0);
+      } else {
+        p.mesh.position.copy(heliocentricPositions[p.data.name]).sub(earthPos);
       }
     });
-    moon.position.sub(earthPos);
+    
+    // Update light position to follow Sun in geocentric view
+    const sunLight = scene.getObjectByName("sunLight");
+    if (sunLight) {
+      sunLight.position.copy(sunMesh.position);
+    }
+  } else {
+    // Heliocentric view - Sun at center
+    sunMesh.position.set(0, 0, 0);
+    
+    planets.forEach(p => {
+      if (heliocentricPositions[p.data.name]) {
+        p.mesh.position.copy(heliocentricPositions[p.data.name]);
+      }
+    });
+    
+    // Light stays at origin
+    const sunLight = scene.getObjectByName("sunLight");
+    if (sunLight) {
+      sunLight.position.set(0, 0, 0);
+    }
   }
 
   // Update labels
+  sunMesh.label.position.copy(sunMesh.position);
+  sunMesh.label.position.y += 46;
+  
   planets.forEach(p => {
     p.label.position.copy(p.mesh.position);
     p.label.position.y += p.data.size + 20;
-    p.label.element.style.opacity = THREE.MathUtils.clamp(1.6 - camera.position.distanceTo(p.mesh.position)/1100, 0.15, 1);
+    p.label.element.style.opacity = THREE.MathUtils.clamp(
+      1.6 - camera.position.distanceTo(p.mesh.position)/1100, 
+      0.15, 
+      1
+    );
   });
 
-  // Moon around Earth
+  // Moon orbit around Earth
   const moonAng = days / 27.3 * 2 * Math.PI * 9;
   const mr = 32;
-  moon.position.x = (isGeocentric ? 0 : earthPos.x) + mr * Math.cos(moonAng);
-  moon.position.z = (isGeocentric ? 0 : earthPos.z) + mr * Math.sin(moonAng);
-  moon.position.y = (isGeocentric ? 0 : earthPos.y) + Math.sin(moonAng) * 6;
+  const earthMesh = planets.find(p => p.data.name === "Earth").mesh;
+  
+  moon.position.x = earthMesh.position.x + mr * Math.cos(moonAng);
+  moon.position.z = earthMesh.position.z + mr * Math.sin(moonAng);
+  moon.position.y = earthMesh.position.y + Math.sin(moonAng) * 6;
+  
   moon.label.position.copy(moon.position);
   moon.label.position.y += 14;
 
+  // Rotate zodiac slowly
   zodiacGroup.rotation.y += 0.00028;
 
-  // Sight lines from current center
+  // Update sight lines from observation point
   if (showLines) {
-    earthLines.forEach(l => scene.remove(l)); earthLines = [];
-    const center = isGeocentric ? new THREE.Vector3(0,0,0) : earthPos;
+    sightLines.forEach(l => scene.remove(l)); 
+    sightLines = [];
+    
+    const observationPoint = isGeocentric ? new THREE.Vector3(0, 0, 0) : earthPos;
+    
+    // Draw lines from observation point to each celestial body
     planets.concat([{mesh: moon, data:{name:"Moon"}}]).forEach(obj => {
-      if (obj.data.name === "Earth" || obj.data.name === "Sun") return;
+      if (isGeocentric && obj.data.name === "Earth") return;
+      if (!isGeocentric && obj.data.name === "Sun") return;
+      
       const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([obj.mesh.position, center]),
+        new THREE.BufferGeometry().setFromPoints([
+          observationPoint,
+          obj.mesh.position
+        ]),
         new THREE.LineBasicMaterial({color:0xffdd88, transparent:true, opacity:0.4})
       );
       scene.add(line);
-      earthLines.push(line);
+      sightLines.push(line);
     });
+    
+    // Line to Sun in geocentric mode
+    if (isGeocentric) {
+      const sunLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          observationPoint,
+          sunMesh.position
+        ]),
+        new THREE.LineBasicMaterial({color:0xffdd88, transparent:true, opacity:0.4})
+      );
+      scene.add(sunLine);
+      sightLines.push(sunLine);
+    }
   }
 
   controls.update();
@@ -259,18 +399,17 @@ document.getElementById('toggle-view').addEventListener('click', function() {
   isGeocentric = !isGeocentric;
   this.classList.toggle('heliocentric', !isGeocentric);
   this.classList.toggle('geocentric', isGeocentric);
-  this.textContent = isGeocentric ? "Geocentric – click to return to Heliocentric" : "Heliocentric – click to switch to Geocentric";
+  this.textContent = isGeocentric ? 
+    "Geocentric Mode – Click to Switch to Heliocentric" : 
+    "Heliocentric Mode – Click to Switch to Geocentric";
 
-  // Stabilize view
-  controls.enableDamping = false;
-  setTimeout(() => controls.enableDamping = true, 300);
-
+  // Adjust camera for better view
   if (isGeocentric) {
-    camera.position.set(0, 120, 520);
+    camera.position.set(0, 140, 550);
   } else {
     camera.position.set(260, 320, 450);
   }
-  controls.target.set(0,0,0);
+  controls.target.set(0, 0, 0);
   controls.update();
 });
 
@@ -278,6 +417,7 @@ document.getElementById('toggle-view').addEventListener('click', function() {
 document.getElementById('toggle-labels').addEventListener('click', function() {
   showLabels = !showLabels;
   planets.forEach(p => p.label.visible = showLabels);
+  sunMesh.label.visible = showLabels;
   moon.label.visible = showLabels;
   this.classList.toggle('on', showLabels);
   this.textContent = `Labels: ${showLabels ? 'ON' : 'OFF'}`;
@@ -292,6 +432,10 @@ document.getElementById('toggle-orbits').addEventListener('click', function() {
 
 document.getElementById('toggle-lines').addEventListener('click', function() {
   showLines = !showLines;
+  if (!showLines) {
+    sightLines.forEach(l => scene.remove(l));
+    sightLines = [];
+  }
   this.classList.toggle('on', showLines);
   this.textContent = `Sight Lines: ${showLines ? 'ON' : 'OFF'}`;
 });
@@ -322,8 +466,8 @@ function togglePause() {
 }
 
 function resetView() {
-  camera.position.set(isGeocentric ? 0 : 260, 320, isGeocentric ? 520 : 450);
-  controls.target.set(0,0,0);
+  camera.position.set(isGeocentric ? 0 : 260, 320, isGeocentric ? 550 : 450);
+  controls.target.set(0, 0, 0);
   controls.update();
 }
 </script>
